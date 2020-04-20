@@ -1,7 +1,5 @@
 # imports
 import datetime
-from flask import Flask
-from flask import render_template, render_template_string, redirect
 import simplejson
 import urllib.request
 import boto3
@@ -11,21 +9,32 @@ import numpy as np
 from xgboost import XGBClassifier
 import streamlit as st
 import plotly.express as px
+import io
+import datetime
 
-
-def read_s3_obj(bucket_name, output_file):
-    """ Read from s3 bucket"""
-    try:
-        s3 = boto3.resource('s3')
-        obj = s3.Object(bucket_name, output_file)
-        body = obj.get()['Body'].read().decode('utf-8')
-        return body
-    except:
-        return ""
 
 
 st.title("Law School Predictor")
 
+@st.cache()
+def load_data(): 
+    s3 = boto3.client('s3') # comment out when on local
+    obj = s3.get_object(Bucket = 'lawyer-predict', Key = 'df.csv')
+    data_fnc = pd.read_csv(io.BytesIO(obj['Body'].read()))
+
+    s3_bucket_stuff = boto3.resource('s3')
+    bucket = s3_bucket_stuff.Bucket('lawyer-predict')    
+    for file in bucket.objects.all():    
+        file_date = file.last_modified.replace(tzinfo=None)
+    
+    return data_fnc, file_date
+
+data_orig, date_modified = load_data()
+
+date_month_dict = {1: 'January ', 2:'February ', 3:'March ', 4:'April ', 5:'May ', 6:'June ', 7:'July ', 8:'August ', 9:'September ', 10:' October', 11:'November ', 12: 'December '}
+month_name = date_month_dict[date_modified.month]
+
+st.markdown(f'Last updated {date_month_dict[date_modified.month]}{date_modified.day}')
 st.markdown(
 """
 Find out your chances at law school.
@@ -34,8 +43,7 @@ She found it very helpful and I hope it can help you too. Please input your true
 probability of your initial decision. Best of luck on your law school apps!
 """)
 
-data = pd.read_csv('data_full.csv')
-
+data = data_orig.copy()
 
 #categorize decisions as acceptance as 1 , waitlisted as 2 or denied as 0
 data.loc[data.decision.isin(['Accepted', 'Accepted Attending', 'Accepted Deferred', 'Accepted Deferred Attending', 'Accepted Deferred Withdrawn', 'Accepted Withdrawn']), 'decision_numeric'] = 1

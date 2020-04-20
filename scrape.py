@@ -1,9 +1,13 @@
+#!/Users/rushilsheth/anaconda3/bin/python
+
 # imports
 import requests
 from bs4 import BeautifulSoup
 from collections import defaultdict
 import pandas as pd
 import numpy as np
+from io import StringIO # python3; python2: BytesIO 
+import boto3
 
 # get list of schools
 schools = set()
@@ -62,4 +66,9 @@ for cycle_id in range(12,18): #12 is 2014 to 2015
 
 df_full = pd.DataFrame(data = rows, columns = ['username', 'decision', 'gpa', 'lsat', 'urm', 'work_experience', 'scholarship_money', 'sent', 'recieved', 'completed', 'decision', 'school', 'cycleid'])
 
-df_full.to_csv('data_full.csv')
+bucket = 'lawyer-predict' # already created on S3
+csv_buffer = StringIO()
+df_full.to_csv(csv_buffer)
+s3_resource = boto3.resource('s3')
+s3_resource.Object(bucket, 'df.csv').put(Body=csv_buffer.getvalue())
+
