@@ -1,17 +1,14 @@
 # imports
-import datetime
-import simplejson
-import urllib.request
+
 import boto3
-import time
 import pandas as pd
 import numpy as np
 from xgboost import XGBClassifier
 import streamlit as st
 import plotly.express as px
+from imblearn.over_sampling import SMOTENC
+import operator
 import io
-import datetime
-
 
 
 st.title("Law School Predictor")
@@ -41,6 +38,8 @@ Find out your chances at law school.
 I was inspired to make this application while my friend was applying to law school this past year.
 She found it very helpful and I hope it can help you too. Please input your true statistics, to get an accurate
 probability of your initial decision. Best of luck on your law school apps!
+
+Note: This data dates back to admissions for the 2014-2015 school year and accounts for the most recent trends in admissions
 """)
 
 data = data_orig.copy()
@@ -72,19 +71,40 @@ urm = st.sidebar.selectbox('URM', ['No','Yes'])
 urm_dict = {'Yes': 1, 'No': 0}
 work_experience_dict = {'0 years (KJD)':0, '1-4 years':1, '5-9 years': 2, '10+ years': 3}
 
-school = data.loc[data.school == school_name][['decision_numeric', 'gpa', 'lsat', 'urm', 'work_experience_encode', 'cycleid']].dropna()
+#SMOTE stuff
 
-# upsample 
-df_cycle17 = school.loc[school.cycleid == 17]
+# for app
+school_orig = data.loc[data.school == school_name][['decision_numeric', 'gpa', 'lsat', 'urm', 'work_experience_encode', 'cycleid']].dropna().reset_index().drop('index', axis =1)
 
-school =school.append([df_cycle17]*3,ignore_index=True)
+smote_cycle_y = school_orig['cycleid']#.to_numpy()
+smote_cycle_x = school_orig.drop('cycleid', axis = 1)#.to_numpy()
 
-school_y = school['decision_numeric'].to_numpy()
-school_X = school.drop(['decision_numeric', 'cycleid'], axis = 1).to_numpy()
+samp_dict = {}
+
+for cycle_id_smote in np.unique(smote_cycle_y):
+    samp_dict[cycle_id_smote] = smote_cycle_y[smote_cycle_y==cycle_id_smote].shape[0]
+samp_dict[np.max(smote_cycle_y)] = int(np.rint(samp_dict[np.max(smote_cycle_y)]*2.1))
+oversample = SMOTENC(sampling_strategy = samp_dict, categorical_features = [0,3,4], random_state = 7)
+
+X_up, y_up = oversample.fit_resample(smote_cycle_x,smote_cycle_y)
+df_resample_train = pd.DataFrame(X_up,columns = smote_cycle_x.columns)
+
+smote_2_y = df_resample_train[['decision_numeric']]
+smote_2_X = df_resample_train.drop('decision_numeric', axis =1)
+
+samp_dict_2 = {}
+for cycle_id_smote in np.unique(smote_2_y):
+    samp_dict_2[cycle_id_smote] = np.max(smote_2_y['decision_numeric'].value_counts())
+oversample_2 = SMOTENC(sampling_strategy = samp_dict_2, categorical_features = [2,3], random_state = 7)
+
+smote_2_y = smote_2_y.decision_numeric
+
+X_fin, y_fin = oversample_2.fit_resample(smote_2_X,smote_2_y)
+X_fin = X_fin.to_numpy() #pd.DataFrame(X_fin, columns = smote_2_X.columns)
 
 xgb_school = XGBClassifier(num_classes = 3)
 # preds are gpa, lsat, urm, work_experience, 
-xgb_school.fit(school_X, school_y)
+xgb_school.fit(X_fin, y_fin)
 
 
 prediction = xgb_school.predict_proba(np.array([gpa,lsat,work_experience_dict[work_experience],urm_dict[urm]]).reshape(1,4))
@@ -116,6 +136,8 @@ fig.update_layout(title_text='Probability of Each Decision')
 st.plotly_chart(fig)
 
 
+# lets treat 
+school_orig.group
 
 
 
